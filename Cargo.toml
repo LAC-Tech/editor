@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 crossterm = "0.25"
+[build-dependencies]
+bindgen = "0.53.1"
