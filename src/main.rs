@@ -12,10 +12,10 @@
  * 
  * The plan is:
  * - inner has a C interface
- * - outer is implemented in scheme and called by inner.
+ * - outer is implemented in scheme and calls by inner.
  * 
  * The glue layer are PODs that both layers use to communicate.
- * These naturally have to have a C represntation
+ * These naturally have to have a C repr.
  */
 
 mod glue {
@@ -40,7 +40,7 @@ mod glue {
 }
 
 mod inner {
-    use std::ffi::{c_int, c_char, CStr, FromBytesWithNulError};
+    use std::{ffi::{c_int, c_char, CStr, FromBytesWithNulError, CString}};
     use crate::glue;
 
     extern "C" {
@@ -55,8 +55,9 @@ mod inner {
         fn tb_print(x: c_int, y: c_int, fg: u32, bg: u32, str: *const c_char) -> c_int;
     }
 
-    pub enum PrintErr<'a> {
-        StringNotNullTerminated(&'a str)
+    #[derive(Debug)]
+    pub enum PrintErr {
+        StringNotNullTerminated(String)
     }
 
     pub struct Term {
@@ -76,29 +77,35 @@ mod inner {
             Self {config}
         }
 
-        fn to_cstr(s: &str) -> Result<*const i8, FromBytesWithNulError> {
-            CStr::from_bytes_with_nul(s.as_bytes()).map(|s| s.as_ptr())
+        fn to_cstr(s: &[u8]) -> Result<*const i8, FromBytesWithNulError> {
+            CStr::from_bytes_with_nul(s).map(|s| s.as_ptr())
         }
 
         fn print_with_fg(
-            self, fg: u32, x: c_int, y: c_int, s: &str
+            self, fg: u32, x: c_int, y: c_int, s: &[u8]
         ) -> Result<(), PrintErr> {
             Self::to_cstr(s)
-            .map_err(|_| PrintErr::StringNotNullTerminated(s))
+            .map_err(|_| {
+                let err_msg = std::str::from_utf8(s)
+                    .expect("valid utf-8 string")
+                    .to_string();
+
+                PrintErr::StringNotNullTerminated(err_msg)
+            })
             .map(|c_str| unsafe {
-                tb_print(x, y, self.config.fg, self.config.bg, c_str);
+                tb_print(x, y, fg, self.config.bg, c_str);
             })
         }
 
         pub fn print(
-            self, x: c_int, y: c_int, s: &str
+            self, x: c_int, y: c_int, s: &[u8]
         ) -> Result<(), PrintErr> {
             let fg = self.config.fg;
             self.print_with_fg(fg, x, y, s)
         }
 
         pub fn print_err(
-            self, x: c_int, y: c_int, s: &str
+            self, x: c_int, y: c_int, s: &[u8]
         ) -> Result<(), PrintErr> {
             let fg = self.config.fg_err;
             self.print_with_fg(fg, x, y, s)
@@ -116,8 +123,13 @@ mod inner {
             self, path: P
         ) -> Result<(), PrintErr> {
             match std::fs::read_to_string(path) {
-                Ok(s) => self.print(0, 0, &s),
-                Err(s) => self.print_err(0, 0, &s.to_string())
+                Ok(s) => self.print(0, 0, s.as_bytes()),
+                Err(err) => {
+                    let cs = CString::new(err.to_string())
+                        .expect("error from std lib has internal null bytes"); 
+                    let s = cs.as_bytes_with_nul();
+                    self.print_err(0, 0, s)
+                }
             }
         }
     }
@@ -136,11 +148,9 @@ mod outer {
 fn main() {
     inner::Term::global_start();
     let term = inner::Term::new(outer::CONFIG);
-    term.open_text_file("Cargo.toml\\0");
+    term.open_text_file("Cargo.toml\0");
     inner::Term::refresh();
     inner::Term::get_event();
-
-    // TODO: run this after errors occur, rather than panicking
-    inner::Term::global_end();
     
+    inner::Term::global_end();
 }
