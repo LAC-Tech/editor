@@ -40,7 +40,7 @@ mod glue {
 }
 
 mod inner {
-    use std::ffi::{c_int, c_char, CStr};
+    use std::ffi::{c_int, c_char, CStr, FromBytesWithNulError};
     use crate::glue;
 
     extern "C" {
@@ -53,6 +53,10 @@ mod inner {
         fn tb_present() -> c_int;
         fn tb_shutdown() -> c_int;
         fn tb_print(x: c_int, y: c_int, fg: u32, bg: u32, str: *const c_char) -> c_int;
+    }
+
+    pub enum PrintErr<'a> {
+        StringNotNullTerminated(&'a str)
     }
 
     pub struct Term {
@@ -72,17 +76,32 @@ mod inner {
             Self {config}
         }
 
-        fn to_cstr(s: &str) -> *const i8 {
-            CStr::from_bytes_with_nul(s.as_bytes())
-                .expect("A single, sentinel, null byte")
-                .as_ptr()
+        fn to_cstr(s: &str) -> Result<*const i8, FromBytesWithNulError> {
+            CStr::from_bytes_with_nul(s.as_bytes()).map(|s| s.as_ptr())
         }
 
-        pub fn print(self, x: c_int, y: c_int, s: &str) {
-            let c_str = Self::to_cstr(s);
-            unsafe {
+        fn print_with_fg(
+            self, fg: u32, x: c_int, y: c_int, s: &str
+        ) -> Result<(), PrintErr> {
+            Self::to_cstr(s)
+            .map_err(|_| PrintErr::StringNotNullTerminated(s))
+            .map(|c_str| unsafe {
                 tb_print(x, y, self.config.fg, self.config.bg, c_str);
-            }
+            })
+        }
+
+        pub fn print(
+            self, x: c_int, y: c_int, s: &str
+        ) -> Result<(), PrintErr> {
+            let fg = self.config.fg;
+            self.print_with_fg(fg, x, y, s)
+        }
+
+        pub fn print_err(
+            self, x: c_int, y: c_int, s: &str
+        ) -> Result<(), PrintErr> {
+            let fg = self.config.fg_err;
+            self.print_with_fg(fg, x, y, s)
         }
 
         pub fn refresh() {
@@ -93,12 +112,14 @@ mod inner {
             unsafe { term_get_event() }
         }
 
-        // fn open_text_file<P: AsRef<std::path::Path>>(path: P) {
-//     match std::fs::read_to_string(path) {
-//         Ok(s) => tb_print(0, 0, config::FG, config::BG, s),
-//         Err(s) => tb_print(0, 0, config::FG_ERR, config::BG, s)
-//     };
-// )
+        pub fn open_text_file<P: AsRef<std::path::Path>>(
+            self, path: P
+        ) -> Result<(), PrintErr> {
+            match std::fs::read_to_string(path) {
+                Ok(s) => self.print(0, 0, &s),
+                Err(s) => self.print_err(0, 0, &s.to_string())
+            }
+        }
     }
 }
 
@@ -115,9 +136,11 @@ mod outer {
 fn main() {
     inner::Term::global_start();
     let term = inner::Term::new(outer::CONFIG);
-    term.print(0, 0, "Merry Christmas!!!\n\0");
+    term.open_text_file("Cargo.toml\\0");
     inner::Term::refresh();
     inner::Term::get_event();
+
+    // TODO: run this after errors occur, rather than panicking
     inner::Term::global_end();
     
 }
