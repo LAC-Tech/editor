@@ -122,8 +122,13 @@ mod inner {
         pub fn open_text_file<P: AsRef<std::path::Path>>(
             self, path: P
         ) -> Result<(), PrintErr> {
-            match std::fs::read_to_string(path) {
-                Ok(s) => self.print(0, 0, s.as_bytes()),
+
+            
+            match std::fs::read(path) {
+                Ok(mut byte_vec) => {
+                    byte_vec.push(b'\0');
+                    self.print(0, 0, &byte_vec)
+                },
                 Err(err) => {
                     let cs = CString::new(err.to_string())
                         .expect("error from std lib has internal null bytes"); 
@@ -148,7 +153,7 @@ mod outer {
 fn main() {
     inner::Term::global_start();
     let term = inner::Term::new(outer::CONFIG);
-    term.open_text_file("Cargo.toml\0");
+    term.open_text_file("Cargo.toml");
     inner::Term::refresh();
     inner::Term::get_event();
     
