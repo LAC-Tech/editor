@@ -122,8 +122,6 @@ mod inner {
         pub fn open_text_file<P: AsRef<std::path::Path>>(
             self, path: P
         ) -> Result<(), PrintErr> {
-
-            
             match std::fs::read(path) {
                 Ok(mut byte_vec) => {
                     byte_vec.push(b'\0');
@@ -153,9 +151,17 @@ mod outer {
 fn main() {
     inner::Term::global_start();
     let term = inner::Term::new(outer::CONFIG);
-    term.open_text_file("Cargo.toml");
-    inner::Term::refresh();
-    inner::Term::get_event();
+    match term.open_text_file("Cargo.toml") {
+        Ok(()) => {
+            inner::Term::refresh();
+            inner::Term::get_event();
+            inner::Term::global_end();
+        },
+        Err(err) => {
+            println!("un-handled print err: {:?}", err);
+            inner::Term::global_end();
+        }
+
+    } 
     
-    inner::Term::global_end();
 }
