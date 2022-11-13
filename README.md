@@ -30,7 +30,7 @@ My favourite, but does not run on the console.
 
 ## Micro
 
-Best console editor, but it's customisation will always be limited due to using console files
+Best console editor, but it's customisation will always be limited due to using JSON files.
 
 ## Emacs
 
@@ -44,18 +44,17 @@ I can use modal key bindings but they're not my favourite. Extending it with lot
 
 ## Scheme <-> Rust Interop
 
-I want the communication to be as simple as possible: ideally the rust has no idea about scheme. Scheme is the master, rust is the slave.
+I want the communication to be as simple as possible: ideally the rust has no idea about scheme. Scheme is the master, Rust is the slave.
 
 ## Features
 
 Stuff I would struggle to program scheme without:
 
-- multiple dispatch
-- pattern matching
+- pattern matching and/or multiple dispatch
 - hashtables
 - records
 
-I also want the ability to reload modules at run time, so the user doesn't have to stop the whole system.
+I also want the ability to reload modules at run time, so the user doesn't have to stop the whole system when they've changed their init.scm.
 
 ## Implementations/Dialects I'm considering
 
@@ -66,8 +65,8 @@ Pros:
 	- Has all the features I want
 
 Cons:
-	- Seems to be based around C calling Scheme, not Scheme calling C.
-	- Smaller implementation - a niche within a niche
+	- Not 100% clear how you call C from scheme.
+	- Smaller implementation - I don't know any project using it.
 
 ### Racket
 
