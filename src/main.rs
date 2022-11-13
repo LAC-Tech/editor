@@ -1,63 +1,40 @@
-use std::io::Write;
-use crossterm::{ExecutableCommand, terminal, event, QueueableCommand, style, cursor, queue};
-
-
-struct Term {
-    out: std::io::Stdout
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct TBEvent {
+    r#type: u8, /* one of TB_EVENT_* constants */
+    r#mod: u8,  /* bitwise TB_MOD_* constants */
+    key: u16, /* one of TB_KEY_* constants */
+    ch: u32,  /* a Unicode code point */
+    w: i32,    /* resize width */
+    h: i32,    /* resize height */
+    x: i32,    /* mouse x */
+    y: i32    /* mouse y */
 }
 
-type OutputResult<'a> = std::io::Result<&'a mut std::io::Stdout>;
+use std::ffi::{c_int, c_char, CStr};
 
-impl Term {
-    fn new() -> std::io::Result<Self> {
-        terminal::enable_raw_mode()?;
-        let mut out = std::io::stdout(); 
-        queue!(out, cursor::SavePosition, terminal::EnterAlternateScreen)?;
-        out.flush()?;
-        Ok(Self {out})
-    }
+extern "C" {
+    // higher level term stuff
+    fn term_new();
+    fn term_wait_for_event() -> TBEvent;
 
-    fn clear(&mut self) -> OutputResult {
-        self.out.execute(terminal::Clear(terminal::ClearType::All))
-    }
-
-    fn wait_for_event() -> std::io::Result<event::Event> {
-        event::read()
-    }
-
-    fn print(&mut self, x: u16, y: u16, s: &str) -> OutputResult {
-        self.out.queue(cursor::MoveTo(x, y))?.queue(style::Print(s))
-    }
-
-    fn refresh(&mut self) -> std::io::Result<()> {
-        self.out.flush()
-    }
+    // If the C shim does nothing, just use termbox2 directly
+    fn tb_clear() -> c_int;
+    fn tb_present() -> c_int;
+    fn tb_shutdown() -> c_int;
+    fn tb_print(x: c_int, y: c_int, fg: u32, bg: u32, str: *const c_char) -> c_int;
 }
 
-impl Drop for Term {
-    fn drop(&mut self) {
-        // moves cursor back to where it was and restores contents of terminal
-        // ie, it "exits cleanly" like vim
-        queue!(self.out, 
-            terminal::LeaveAlternateScreen, 
-            cursor::RestorePosition
-        ).expect("restoring screen failed");
-
-        self.out.flush().expect("flushing terminal failed");
-
-        // Otherwise key press will be all weird
-        terminal::disable_raw_mode()
-            .expect("disabling terminal raw mode failed");
+fn main() {
+    let cs = CStr::from_bytes_with_nul(b"Merry Christmas!!!\n\0")
+        .expect("A single, sentinel, null byte")
+        .as_ptr();
+    unsafe {
+        term_new();
+        tb_print(0, 0, 0xFF0000, 0x00FF00, cs);
+        tb_present();
+        term_wait_for_event();
+        tb_clear();
+        tb_shutdown();
     }
-}
-
-fn main() -> crossterm::Result<()> {
-    let mut term = Term::new()?;
-    term.print(0, 0, "press any key to exit\n")?;
-    term.refresh()?;
-
-    Term::wait_for_event()?;
-    term.clear()?;
-
-    Ok(())
 }
