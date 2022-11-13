@@ -40,104 +40,83 @@ mod glue {
 }
 
 mod inner {
-    use std::{ffi::{c_int, c_char, CStr, FromBytesWithNulError, CString}};
+    use std::ffi::{c_int, c_char};
+    use std::mem::MaybeUninit;
     use crate::glue;
 
     extern "C" {
-        // higher level term stuff
-        fn term_start();
-        fn term_get_event() -> glue::TBEvent;
-    
-        // If the C shim does nothing, just use termbox2 directly
+        // Termbox2
+        fn tb_poll_event(ev: *mut glue::TBEvent) -> c_int;
         fn tb_clear() -> c_int;
         fn tb_present() -> c_int;
         fn tb_shutdown() -> c_int;
         fn tb_print(
             x: c_int, y: c_int, fg: u32, bg: u32, str: *const c_char
         ) -> c_int;
+
+        // Convenience functions to avoid C macros in Rust
+        fn tb_init_truecolor();
     }
 
-    #[derive(Debug)]
-    pub enum PrintErr {
-        StringNotNullTerminated(String)
+    #[no_mangle]
+    pub extern fn term_start() {
+        unsafe { tb_init_truecolor(); }
     }
 
-    pub struct Term {
-        config: glue::Config   
+    #[no_mangle]
+    pub extern fn term_end() {
+        unsafe { tb_shutdown(); }
     }
 
-    impl Term {
-        pub fn global_start() {
-            unsafe { term_start(); }
-        }
-
-        pub fn global_end() {
-            unsafe { tb_shutdown(); }
-        }
-
-        pub fn new(config: glue::Config) -> Self {
-            Self {config}
-        }
-
-        fn to_cstr(s: &[u8]) -> Result<*const i8, FromBytesWithNulError> {
-            CStr::from_bytes_with_nul(s).map(|s| s.as_ptr())
-        }
-
-        fn print_with_fg(
-            self, fg: u32, x: c_int, y: c_int, s: &[u8]
-        ) -> Result<(), PrintErr> {
-            Self::to_cstr(s)
-            .map_err(|_| {
-                let err_msg = std::str::from_utf8(s)
-                    .expect("valid utf-8 string")
-                    .to_string();
-
-                PrintErr::StringNotNullTerminated(err_msg)
-            })
-            .map(|c_str| unsafe {
-                tb_print(x, y, fg, self.config.bg, c_str);
-            })
-        }
-
-        pub fn print(
-            self, x: c_int, y: c_int, s: &[u8]
-        ) -> Result<(), PrintErr> {
-            let fg = self.config.fg;
-            self.print_with_fg(fg, x, y, s)
-        }
-
-        pub fn print_err(
-            self, x: c_int, y: c_int, s: &[u8]
-        ) -> Result<(), PrintErr> {
-            let fg = self.config.fg_err;
-            self.print_with_fg(fg, x, y, s)
-        }
-
-        pub fn refresh() {
-            unsafe { tb_present(); }
-        }
-
-        pub fn get_event() -> glue::TBEvent {
-            unsafe { term_get_event() }
-        }
-
-        pub fn open_text_file<P: AsRef<std::path::Path>>(
-            self, path: P
-        ) -> Result<(), PrintErr> {
-            match std::fs::read(path) {
-                Ok(mut byte_vec) => {
-                    byte_vec.push(b'\0');
-                    self.print(0, 0, &byte_vec)
-                },
-                Err(err) => {
-                    let cs = CString::new(err.to_string())
-                        .expect("error from std lib has internal null bytes"); 
-                    let s = cs.as_bytes_with_nul();
-                    self.print_err(0, 0, s)
-                }
-            }
+    #[no_mangle]
+    pub extern fn term_get_event() -> glue::TBEvent {
+        unsafe { 
+            let mut ev = MaybeUninit::<glue::TBEvent>::uninit();
+            tb_poll_event(ev.as_mut_ptr());
+            return ev.assume_init();
         }
     }
+
+    #[no_mangle]
+    pub extern fn term_refresh() {
+        unsafe { tb_present(); }
+    }
+
+    #[no_mangle]
+    pub extern fn term_print(
+        config: &glue::Config, x: c_int, y: c_int, s: *const c_char
+    ) -> c_int {
+        unsafe {
+            tb_print(x, y, config.fg, config.bg, s)
+        }
+    }
+
+    #[no_mangle]
+    pub extern fn term_print_err(
+        config: &glue::Config, x: c_int, y: c_int, s: *const c_char
+    ) -> c_int {
+        unsafe {
+            tb_print(x, y, config.fg_err, config.bg, s)
+        }
+    }
+
+    // #[no_mangle]
+    // pub fn term_open_text_file<P: AsRef<std::path::Path>>(
+    //     self, path: P
+    // ) -> Result<(), PrintErr> {
+    //     match std::fs::read(path) {
+    //         Ok(mut byte_vec) => {
+    //             byte_vec.push(b'\0');
+    //             self.print(0, 0, &byte_vec)
+    //         },
+    //         Err(err) => {
+    //             let cs = CString::new(err.to_string())
+    //                 .expect("error from std lib has internal null bytes"); 
+    //             let s = cs.as_bytes_with_nul();
+    //             self.print_err(0, 0, s)
+    //         }
+    //     }
+    // }
 }
 
 mod outer {
@@ -150,19 +129,17 @@ mod outer {
     };
 }
 
-fn main() {
-    inner::Term::global_start();
-    let term = inner::Term::new(outer::CONFIG);
-    match term.open_text_file("Cargo.toml") {
-        Ok(()) => {
-            inner::Term::refresh();
-            inner::Term::get_event();
-        },
-        Err(err) => {
-            println!("un-handled print err: {:?}", err);
-        }
-    } 
+// Temp function - later scheme will provide the strings
+fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
+    std::ffi::CString::new(s).expect("string should be null terminated")
+}
 
-    inner::Term::global_end();
+fn main() {
+    inner::term_start();
     
+    inner::term_print(&outer::CONFIG, 0, 0, cs("hello!!!").as_ptr());
+    inner::term_refresh();
+    inner::term_get_event();
+
+    inner::term_end();
 }
