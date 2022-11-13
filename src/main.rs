@@ -52,7 +52,9 @@ mod inner {
         fn tb_clear() -> c_int;
         fn tb_present() -> c_int;
         fn tb_shutdown() -> c_int;
-        fn tb_print(x: c_int, y: c_int, fg: u32, bg: u32, str: *const c_char) -> c_int;
+        fn tb_print(
+            x: c_int, y: c_int, fg: u32, bg: u32, str: *const c_char
+        ) -> c_int;
     }
 
     #[derive(Debug)]
@@ -155,13 +157,12 @@ fn main() {
         Ok(()) => {
             inner::Term::refresh();
             inner::Term::get_event();
-            inner::Term::global_end();
         },
         Err(err) => {
             println!("un-handled print err: {:?}", err);
-            inner::Term::global_end();
         }
-
     } 
+
+    inner::Term::global_end();
     
 }
