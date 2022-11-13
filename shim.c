@@ -1,5 +1,3 @@
-#include <stdint.h>
-#include <wchar.h>
 #include "termbox2.h"
 
 // Can't be bothered dealing with C Macros in Rust.
