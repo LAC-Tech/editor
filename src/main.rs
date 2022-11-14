@@ -12,7 +12,7 @@
  * 
  * The plan is:
  * - inner has a C interface
- * - outer is implemented in scheme and calls by inner.
+ * - outer is implemented in scheme and calls inner.
  * 
  * The glue layer are PODs that both layers use to communicate.
  * These naturally have to have a C repr.
@@ -40,7 +40,7 @@ mod glue {
 }
 
 mod inner {
-    use std::ffi::{c_int, c_char};
+    use std::ffi::{c_int, c_char, CStr};
     use std::mem::MaybeUninit;
     use crate::glue;
 
@@ -100,23 +100,29 @@ mod inner {
         }
     }
 
-    // #[no_mangle]
-    // pub fn term_open_text_file<P: AsRef<std::path::Path>>(
-    //     self, path: P
-    // ) -> Result<(), PrintErr> {
-    //     match std::fs::read(path) {
-    //         Ok(mut byte_vec) => {
-    //             byte_vec.push(b'\0');
-    //             self.print(0, 0, &byte_vec)
-    //         },
-    //         Err(err) => {
-    //             let cs = CString::new(err.to_string())
-    //                 .expect("error from std lib has internal null bytes"); 
-    //             let s = cs.as_bytes_with_nul();
-    //             self.print_err(0, 0, s)
-    //         }
-    //     }
-    // }
+    #[no_mangle]
+    pub extern fn term_open_text_file(
+        config: &glue::Config, path: *const c_char
+    ) {
+        let rust_path = unsafe { 
+            CStr::from_ptr(path).to_str().expect("valid utf8 sequence")
+        };
+
+        let mut buffer: Vec<u8> = vec![];
+
+        if let Ok(file_contents) = std::fs::read_to_string(rust_path) {
+            for (i, line) in file_contents.lines().enumerate() {
+                buffer.extend_from_slice(line.as_bytes());
+                buffer.push(b'\0');
+
+                let cstr = CStr::from_bytes_with_nul(buffer.as_slice())
+                    .expect("not a null terminated slice");
+
+                term_print(config, 0, i as std::ffi::c_int, cstr.as_ptr());
+                buffer.clear();
+            }
+        }
+    }
 }
 
 mod outer {
@@ -137,7 +143,11 @@ fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
 fn main() {
     inner::term_start();
     
-    inner::term_print(&outer::CONFIG, 0, 0, cs("hello!!!").as_ptr());
+    // inner::term_print(&outer::CONFIG, 0, 0, cs("hello!!!\nthere").as_ptr());
+    // inner::term_print(&outer::CONFIG, 0, 1, cs("another string").as_ptr());
+
+    inner::term_open_text_file(&outer::CONFIG, cs("./Cargo.toml").as_ptr());
+    
     inner::term_refresh();
     inner::term_get_event();
 
