@@ -201,7 +201,7 @@ fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
 fn main() {
     let mut term = mem::MaybeUninit::<inner::Term>::uninit();
     inner::term_start(term.as_mut_ptr(), outer::CONFIG);
-    let term_ptr = unsafe { term.as_mut_ptr() };
+    let term_ptr = term.as_mut_ptr();
 
     inner::term_open_text_file(term_ptr, cs("./Cargo.toml").as_ptr());
     

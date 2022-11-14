@@ -22,6 +22,10 @@ I like them because it looks you get undo functionality thrown in, and they make
 
 Very open to changing my mind.
 
+https://code.visualstudio.com/blogs/2018/03/23/text-buffer-reimplementation#_previous-text-buffer-data-structure
+
+https://code.visualstudio.com/blogs/2018/03/23/text-buffer-reimplementation
+
 # Why not other editors?
 
 ## Sublime Text
