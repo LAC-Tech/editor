@@ -18,6 +18,8 @@
  * These naturally have to have a C repr.
  */
 
+use std::mem;
+
 mod glue {
     #[repr(C)]
     #[derive(PartialEq, Eq, Hash)]
@@ -42,7 +44,7 @@ mod glue {
 
 mod inner {
     use std::ffi::{c_int, c_char, CStr};
-    use std::mem::MaybeUninit;
+    use std::mem;
     use crate::glue;
 
     extern "C" {
@@ -60,7 +62,7 @@ mod inner {
         fn tb_init_truecolor();
     }
 
-
+    #[derive(Clone, Copy)]
     struct Cursor(c_int, c_int);
 
     impl Cursor {
@@ -71,7 +73,7 @@ mod inner {
     }
 
     #[repr(C)]
-    struct Term {
+    pub struct Term {
         cursor: Cursor,
         config: glue::Config
     }
@@ -91,9 +93,11 @@ mod inner {
 
     #[no_mangle]
     pub extern fn term_start(term: *mut Term, config: glue::Config)  {
-        term = Term::new(config);
-
-        unsafe { tb_init_truecolor(); }
+        let t = Term::new(config);
+        unsafe { 
+            term.write(t);
+            tb_init_truecolor();
+        }
     }
 
     #[no_mangle]
@@ -104,7 +108,7 @@ mod inner {
     #[no_mangle]
     pub extern fn term_get_event() -> glue::TBEvent {
         unsafe { 
-            let mut ev = MaybeUninit::<glue::TBEvent>::uninit();
+            let mut ev = mem::MaybeUninit::<glue::TBEvent>::uninit();
             tb_poll_event(ev.as_mut_ptr());
             return ev.assume_init();
         }
@@ -117,25 +121,27 @@ mod inner {
 
     #[no_mangle]
     pub extern fn term_print(
-        config: *const Term, x: c_int, y: c_int, s: *const c_char
+        term: *const Term, x: c_int, y: c_int, s: *const c_char
     ) -> c_int {
         unsafe {
+            let config = &(*term).config;
             tb_print(x, y, config.fg, config.bg, s)
         }
     }
 
     #[no_mangle]
     pub extern fn term_print_err(
-        config: &glue::Config, x: c_int, y: c_int, s: *const c_char
+        term: *const Term, x: c_int, y: c_int, s: *const c_char
     ) -> c_int {
         unsafe {
+            let config = &(*term).config;
             tb_print(x, y, config.fg_err, config.bg, s)
         }
     }
 
     #[no_mangle]
     pub extern fn term_open_text_file(
-        config: &glue::Config, path: *const c_char
+        term: *const Term, path: *const c_char
     ) {
         let rust_path = unsafe { 
             CStr::from_ptr(path).to_str().expect("valid utf8 sequence")
@@ -151,12 +157,10 @@ mod inner {
                 let cstr = CStr::from_bytes_with_nul(buffer.as_slice())
                     .expect("not a null terminated slice");
 
-                term_print(config, 0, i as std::ffi::c_int, cstr.as_ptr());
+                term_print(term, 0, i as std::ffi::c_int, cstr.as_ptr());
                 buffer.clear();
             }
         }
-
-        //unsafe { tb_set_cursor(0, 0); }
     }
 }
 
@@ -195,14 +199,11 @@ fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
 }
 
 fn main() {
-    let keybindings = outer::KeyBindings::new();
+    let mut term = mem::MaybeUninit::<inner::Term>::uninit();
+    inner::term_start(term.as_mut_ptr(), outer::CONFIG);
+    let term_ptr = unsafe { term.as_mut_ptr() };
 
-    inner::term_start();
-    
-    // inner::term_print(&outer::CONFIG, 0, 0, cs("hello!!!\nthere").as_ptr());
-    // inner::term_print(&outer::CONFIG, 0, 1, cs("another string").as_ptr());
-
-    inner::term_open_text_file(&outer::CONFIG, cs("./Cargo.toml").as_ptr());
+    inner::term_open_text_file(term_ptr, cs("./Cargo.toml").as_ptr());
     
     inner::term_refresh();
     inner::term_get_event();

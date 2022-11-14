@@ -1,6 +1,4 @@
 - move cursor around said file
 	- display cursor
-	- define point struct
-	- define global cursor variable using point
-	- re-display cursor on screen when it changes from variable
-	- define keymap
+	- move cursor by writing code
+	- move cursor by getting keypress
