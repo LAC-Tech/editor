@@ -20,6 +20,7 @@
 
 mod glue {
     #[repr(C)]
+    #[derive(PartialEq, Eq, Hash)]
     pub struct TBEvent {
         r#type: u8, /* one of TB_EVENT_* constants */
         r#mod: u8,  /* bitwise TB_MOD_* constants */
@@ -53,13 +54,45 @@ mod inner {
         fn tb_print(
             x: c_int, y: c_int, fg: u32, bg: u32, str: *const c_char
         ) -> c_int;
+        fn tb_set_cursor(cx: c_int, cy: c_int) -> c_int;
 
         // Convenience functions to avoid C macros in Rust
         fn tb_init_truecolor();
     }
 
+
+    struct Cursor(c_int, c_int);
+
+    impl Cursor {
+        fn print(self) {
+            
+            unsafe { tb_set_cursor(self.0, self.1); }
+        }
+    }
+
+    #[repr(C)]
+    struct Term {
+        cursor: Cursor,
+        config: glue::Config
+    }
+
+    impl Term {
+        fn new(config: glue::Config) -> Self {
+            let cursor = Cursor(0, 0);
+            Self {cursor, config}
+
+        }
+
+        fn move_cursor(&mut self, p: Cursor) {
+            self.cursor = p;
+            self.cursor.print();
+        }
+    }
+
     #[no_mangle]
-    pub extern fn term_start() {
+    pub extern fn term_start(term: *mut Term, config: glue::Config)  {
+        term = Term::new(config);
+
         unsafe { tb_init_truecolor(); }
     }
 
@@ -84,7 +117,7 @@ mod inner {
 
     #[no_mangle]
     pub extern fn term_print(
-        config: &glue::Config, x: c_int, y: c_int, s: *const c_char
+        config: *const Term, x: c_int, y: c_int, s: *const c_char
     ) -> c_int {
         unsafe {
             tb_print(x, y, config.fg, config.bg, s)
@@ -122,17 +155,38 @@ mod inner {
                 buffer.clear();
             }
         }
+
+        //unsafe { tb_set_cursor(0, 0); }
     }
 }
 
 mod outer {
     use crate::glue;
+    use std::collections::HashMap;
 
     pub const CONFIG: glue::Config = glue::Config {
         fg: 0x00FF00,
         fg_err: 0xFF0000,
         bg: 0x000000
     };
+    
+    pub struct KeyBindings {
+        hash_map: HashMap<glue::TBEvent, fn()>
+    }
+
+    impl KeyBindings {
+        pub fn new() -> Self {
+            Self { hash_map: HashMap::new() }
+        }
+
+        pub fn bind(&mut self, event: glue::TBEvent, action: fn()) {
+            self.hash_map.insert(event, action);
+        }
+
+        pub fn get(self, event: &glue::TBEvent) -> Option<fn()> {
+            self.hash_map.get(event).cloned()
+        }
+    }
 }
 
 // Temp function - later scheme will provide the strings
@@ -141,6 +195,8 @@ fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
 }
 
 fn main() {
+    let keybindings = outer::KeyBindings::new();
+
     inner::term_start();
     
     // inner::term_print(&outer::CONFIG, 0, 0, cs("hello!!!\nthere").as_ptr());

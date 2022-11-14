@@ -76,7 +76,7 @@ Pros:
 	- Biggest ecosystem
 
 Cons: 
-	- Not sure if I can recompile modules on the fly
+	- https://docs.racket-lang.org/guide/load.html it looks like racket is really not designed to load modules at runtime.
 
 ### Guile
 
