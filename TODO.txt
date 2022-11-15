@@ -1,4 +1,10 @@
+APP
+
 - move cursor around said file
 	- display cursor after I open a file
 		- wrtie functions to move left and right
 	- move cursor by getting keypress
+
+ENVIRONMENT
+- figure out rust debugger
+- how does CC deal with macros

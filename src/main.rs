@@ -23,6 +23,7 @@ use std::mem;
 mod glue {
     #[repr(C)]
     #[derive(PartialEq, Eq, Hash)]
+    // Re-declaring tb_event from terbox2
     pub struct TBEvent {
         r#type: u8, /* one of TB_EVENT_* constants */
         r#mod: u8,  /* bitwise TB_MOD_* constants */
@@ -60,16 +61,18 @@ mod inner {
 
         // Convenience functions to avoid C macros in Rust
         fn tb_init_truecolor();
+        pub fn tb_key(key: u16) -> glue::TBEvent;
+        pub static tb_key_arrow_left: u16;
+        pub static tb_key_arrow_right: u16;
     }
 
-    #[derive(Clone, Copy)]
+    #[derive(Clone, Copy, Debug, PartialEq)]
     struct Cursor(c_int, c_int);
 
     const CURSOR_ORIGIN: Cursor = Cursor(0, 0);
 
     impl Cursor {
         fn print(self) {
-            
             unsafe { tb_set_cursor(self.0, self.1); }
         }
     }
@@ -80,7 +83,19 @@ mod inner {
         fn add(self, rhs: Self) -> Self {
             Self(self.0 + rhs.0, self.1 + rhs.1)
         }
-}
+    }
+
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn can_add_two_cursors_together() {
+            let actual = CURSOR_ORIGIN + Cursor(0, 1);
+            assert_eq!(actual, Cursor(0, 1));
+        }
+    }
 
     #[repr(C)]
     pub struct Term {
@@ -176,7 +191,7 @@ mod inner {
     #[no_mangle]
     pub extern fn term_move_cursor_left(term: *mut Term) {
         unsafe {
-            (*term).cursor = (*term).cursor + Cursor(1, 0);
+            (*term).cursor = (*term).cursor + Cursor(-1, 0);
             (*term).cursor.print();
         }
     }
@@ -184,7 +199,7 @@ mod inner {
     #[no_mangle]
     pub extern fn term_move_cursor_right(term: *mut Term) {
         unsafe {
-            (*term).cursor = (*term).cursor + Cursor(-1, 0);
+            (*term).cursor = (*term).cursor + Cursor(1, 0);
             (*term).cursor.print();
         }
     }
@@ -200,23 +215,23 @@ mod outer {
         bg: 0x000000
     };
     
-    pub struct KeyBindings {
-        hash_map: HashMap<glue::TBEvent, fn()>
-    }
+    // pub struct KeyBindings {
+    //     hash_map: HashMap<glue::TBEvent, fn()>
+    // }
 
-    impl KeyBindings {
-        pub fn new() -> Self {
-            Self { hash_map: HashMap::new() }
-        }
+    // impl KeyBindings {
+    //     pub fn new() -> Self {
+    //         Self { hash_map: HashMap::new() }
+    //     }
 
-        pub fn bind(&mut self, event: glue::TBEvent, action: fn()) {
-            self.hash_map.insert(event, action);
-        }
+    //     pub fn bind(&mut self, event: glue::TBEvent, action: fn()) {
+    //         self.hash_map.insert(event, action);
+    //     }
 
-        pub fn get(self, event: &glue::TBEvent) -> Option<fn()> {
-            self.hash_map.get(event).cloned()
-        }
-    }
+    //     pub fn get(self, event: &glue::TBEvent) -> Option<fn()> {
+    //         self.hash_map.get(event).cloned()
+    //     }
+    // }
 }
 
 // Temp function - later scheme will provide the strings
@@ -224,7 +239,14 @@ fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
     std::ffi::CString::new(s).expect("string should be null terminated")
 }
 
+use std::collections::HashMap;
+
+use inner::tb_key;
 fn main() {
+
+    let left_arrow_key = unsafe {inner::tb_key(inner::tb_key_arrow_left) };
+    let right_arrow_key = unsafe {inner::tb_key(inner::tb_key_arrow_right) };
+
     let mut term = mem::MaybeUninit::<inner::Term>::uninit();
     inner::term_start(term.as_mut_ptr(), outer::CONFIG);
     let term_ptr = term.as_mut_ptr();
@@ -232,15 +254,15 @@ fn main() {
     inner::term_open_text_file(term_ptr, cs("./Cargo.toml").as_ptr());
     
     inner::term_refresh();
-    inner::term_get_event();
-
-    inner::term_move_cursor_right(term_ptr);
+    match inner::term_get_event() {
+        left_arrow_key => inner::term_move_cursor_left(term_ptr),
+        right_arrow_key => inner::term_move_cursor_left(term_ptr),
+        _ => {
+            inner::term_print_err(term_ptr, 0, 0, cs("IDK this key").into_raw()) ;
+        }
+    }
+    
     inner::term_refresh();
-    inner::term_get_event();
-
-    inner::term_move_cursor_left(term_ptr);
-    inner::term_refresh();
-    inner::term_get_event();
-
+    
     inner::term_end();
 }
