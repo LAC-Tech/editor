@@ -1,4 +1,4 @@
 - move cursor around said file
-	- display cursor
-	- move cursor by writing code
+	- display cursor after I open a file
+		- wrtie functions to move left and right
 	- move cursor by getting keypress

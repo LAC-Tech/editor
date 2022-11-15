@@ -65,12 +65,22 @@ mod inner {
     #[derive(Clone, Copy)]
     struct Cursor(c_int, c_int);
 
+    const CURSOR_ORIGIN: Cursor = Cursor(0, 0);
+
     impl Cursor {
         fn print(self) {
             
             unsafe { tb_set_cursor(self.0, self.1); }
         }
     }
+
+    impl std::ops::Add<Cursor> for Cursor {
+        type Output = Self;
+
+        fn add(self, rhs: Self) -> Self {
+            Self(self.0 + rhs.0, self.1 + rhs.1)
+        }
+}
 
     #[repr(C)]
     pub struct Term {
@@ -83,11 +93,6 @@ mod inner {
             let cursor = Cursor(0, 0);
             Self {cursor, config}
 
-        }
-
-        fn move_cursor(&mut self, p: Cursor) {
-            self.cursor = p;
-            self.cursor.print();
         }
     }
 
@@ -141,7 +146,7 @@ mod inner {
 
     #[no_mangle]
     pub extern fn term_open_text_file(
-        term: *const Term, path: *const c_char
+        term: *mut Term, path: *const c_char
     ) {
         let rust_path = unsafe { 
             CStr::from_ptr(path).to_str().expect("valid utf8 sequence")
@@ -160,6 +165,27 @@ mod inner {
                 term_print(term, 0, i as std::ffi::c_int, cstr.as_ptr());
                 buffer.clear();
             }
+        }
+
+        unsafe { 
+            (*term).cursor = CURSOR_ORIGIN; 
+            (*term).cursor.print();
+        }
+    }
+
+    #[no_mangle]
+    pub extern fn term_move_cursor_left(term: *mut Term) {
+        unsafe {
+            (*term).cursor = (*term).cursor + Cursor(1, 0);
+            (*term).cursor.print();
+        }
+    }
+
+    #[no_mangle]
+    pub extern fn term_move_cursor_right(term: *mut Term) {
+        unsafe {
+            (*term).cursor = (*term).cursor + Cursor(-1, 0);
+            (*term).cursor.print();
         }
     }
 }
@@ -205,6 +231,14 @@ fn main() {
 
     inner::term_open_text_file(term_ptr, cs("./Cargo.toml").as_ptr());
     
+    inner::term_refresh();
+    inner::term_get_event();
+
+    inner::term_move_cursor_right(term_ptr);
+    inner::term_refresh();
+    inner::term_get_event();
+
+    inner::term_move_cursor_left(term_ptr);
     inner::term_refresh();
     inner::term_get_event();
 
