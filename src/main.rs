@@ -63,6 +63,8 @@ mod inner {
         fn tb_init_truecolor();
         pub static tb_key_arrow_left: u16;
         pub static tb_key_arrow_right: u16;
+        pub static tb_key_arrow_up: u16;
+        pub static tb_key_arrow_down: u16;
         pub static tb_event_key: u8;
     }
 
@@ -189,9 +191,9 @@ mod inner {
     }
 
     #[no_mangle]
-    pub extern fn term_move_cursor_left(term: *mut Term) {
+    pub extern fn term_move_cursor_move(term: *mut Term, pos: (c_int, c_int)) {
         unsafe {
-            (*term).cursor = (*term).cursor + Cursor(-1, 0);
+            (*term).cursor = (*term).cursor + Cursor(pos.0, pos.1);
             (*term).cursor.print();
         }
     }
@@ -239,8 +241,6 @@ fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
     std::ffi::CString::new(s).expect("string should be null terminated")
 }
 
-use std::collections::HashMap;
-
 fn main() {
     let mut t = mem::MaybeUninit::<inner::Term>::uninit();
     inner::term_start(t.as_mut_ptr(), outer::CONFIG);
@@ -255,11 +255,16 @@ fn main() {
 
         if event.r#type == unsafe { inner::tb_event_key } {
             if event.key == unsafe { inner::tb_key_arrow_left } {
-                inner::term_move_cursor_left(term);
-
+                inner::term_move_cursor_move(term, (-1, 0));
             } else if event.key == unsafe { inner::tb_key_arrow_right } {
-                inner::term_move_cursor_right(term);
-            } else {
+                inner::term_move_cursor_move(term, (1, 0));
+            } else if event.key == unsafe { inner::tb_key_arrow_up } {
+                inner::term_move_cursor_move(term, (0, -1));
+            } else if event.key == unsafe { inner::tb_key_arrow_down } {
+                inner::term_move_cursor_move(term, (0, 1));
+            }
+
+            else {
                 break;
             }
         } else {
