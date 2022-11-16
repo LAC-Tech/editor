@@ -8,3 +8,4 @@ APP
 ENVIRONMENT
 - figure out rust debugger
 - how does CC deal with macros
+- sublime text keyboard shortcuts for LSP

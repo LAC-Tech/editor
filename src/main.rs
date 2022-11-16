@@ -25,14 +25,14 @@ mod glue {
     #[derive(PartialEq, Eq, Hash)]
     // Re-declaring tb_event from terbox2
     pub struct TBEvent {
-        r#type: u8, /* one of TB_EVENT_* constants */
-        r#mod: u8,  /* bitwise TB_MOD_* constants */
-        key: u16, /* one of TB_KEY_* constants */
-        ch: u32,  /* a Unicode code point */
-        w: i32,    /* resize width */
-        h: i32,    /* resize height */
-        x: i32,    /* mouse x */
-        y: i32    /* mouse y */
+        pub r#type: u8, /* one of TB_EVENT_* constants */
+        pub r#mod: u8,  /* bitwise TB_MOD_* constants */
+        pub key: u16, /* one of TB_KEY_* constants */
+        pub ch: u32,  /* a Unicode code point */
+        pub w: i32,    /* resize width */
+        pub h: i32,    /* resize height */
+        pub x: i32,    /* mouse x */
+        pub y: i32    /* mouse y */
     }
 
     #[repr(C)]
@@ -61,9 +61,9 @@ mod inner {
 
         // Convenience functions to avoid C macros in Rust
         fn tb_init_truecolor();
-        pub fn tb_key(key: u16) -> glue::TBEvent;
         pub static tb_key_arrow_left: u16;
         pub static tb_key_arrow_right: u16;
+        pub static tb_event_key: u8;
     }
 
     #[derive(Clone, Copy, Debug, PartialEq)]
@@ -241,28 +241,35 @@ fn cs<S>(s: S) -> std::ffi::CString where S: Into<Vec<u8>> {
 
 use std::collections::HashMap;
 
-use inner::tb_key;
 fn main() {
+    let mut t = mem::MaybeUninit::<inner::Term>::uninit();
+    inner::term_start(t.as_mut_ptr(), outer::CONFIG);
+    let term = t.as_mut_ptr();
 
-    let left_arrow_key = unsafe {inner::tb_key(inner::tb_key_arrow_left) };
-    let right_arrow_key = unsafe {inner::tb_key(inner::tb_key_arrow_right) };
-
-    let mut term = mem::MaybeUninit::<inner::Term>::uninit();
-    inner::term_start(term.as_mut_ptr(), outer::CONFIG);
-    let term_ptr = term.as_mut_ptr();
-
-    inner::term_open_text_file(term_ptr, cs("./Cargo.toml").as_ptr());
+    inner::term_open_text_file(term, cs("./Cargo.toml").as_ptr());
     
     inner::term_refresh();
-    match inner::term_get_event() {
-        left_arrow_key => inner::term_move_cursor_left(term_ptr),
-        right_arrow_key => inner::term_move_cursor_left(term_ptr),
-        _ => {
-            inner::term_print_err(term_ptr, 0, 0, cs("IDK this key").into_raw()) ;
+    
+    loop {
+        let event = inner::term_get_event();
+
+        if event.r#type == unsafe { inner::tb_event_key } {
+            if event.key == unsafe { inner::tb_key_arrow_left } {
+                inner::term_move_cursor_left(term);
+
+            } else if event.key == unsafe { inner::tb_key_arrow_right } {
+                inner::term_move_cursor_right(term);
+            } else {
+                break;
+            }
+        } else {
+            break;
         }
+
+        inner::term_refresh();
     }
     
-    inner::term_refresh();
+    
     
     inner::term_end();
 }
